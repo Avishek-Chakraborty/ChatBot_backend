@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+
+<body>
+    <h1>Chatbot</h1>
+
+    <div id="conversation"></div>
+    <div id="depression-level"></div>
+    <div id="emotion-quotient"></div>
+
+    <form id="chat-form">
+        <label for="query">Enter your query:</label>
+        <input type="text" id="query" name="query" required>
+        <button type="submit">Submit</button>
+    </form>
+
+    <script>
+        function updateConversation(conversation) {
+            const conversationElement = document.getElementById('conversation');
+            conversationElement.innerHTML = '';
+            conversation.forEach(item => {
+                const chatMessage = document.createElement('div');
+                chatMessage.className = 'chat-message';
+
+                const userQuery = document.createElement('div');
+                userQuery.className = 'user-query';
+                userQuery.textContent = `You: ${item.user}`;
+                chatMessage.appendChild(userQuery);
+
+                const botResponse = document.createElement('div');
+                botResponse.className = 'bot-response';
+                botResponse.textContent = `Chatbot: ${item.chatbot}`;
+                chatMessage.appendChild(botResponse);
+
+                if (item.emotion_analysis) {
+                    const emotionAnalysis = document.createElement('div');
+                    emotionAnalysis.className = 'emotion-analysis';
+                    emotionAnalysis.textContent = `Emotion Analysis: ${item.emotion_analysis.emotion} (${item.emotion_analysis.score.toFixed(2)}%)`;
+                    chatMessage.appendChild(emotionAnalysis);
+                }
+
+                conversationElement.appendChild(chatMessage);
+            });
+        }
+
+
+        function updateDepressionLevel(level, severity) {
+            const depressionLevelElement = document.getElementById('depression-level');
+            depressionLevelElement.innerHTML = `Average Depression Level: ${level} (${severity})`;
+        }
+
+        function updateEmotionQuotient(quotient) {
+            const emotionQuotientElement = document.getElementById('emotion-quotient');
+            emotionQuotientElement.innerHTML = `Overall Emotional Quotient: ${quotient.toFixed(2)}`;
+        }
+
+        document.getElementById('chat-form').addEventListener('submit', function (event) {
+            event.preventDefault();
+            const query = document.getElementById('query').value;
+            fetch('/chatbot', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    updateConversation(data.conversation_history);
+                    if (data.average_depression_level !== undefined && data.severity !== undefined) {
+                        updateDepressionLevel(data.average_depression_level, data.severity);
+                    }
+                    if (data.overall_emotional_quotient !== undefined) {
+                        updateEmotionQuotient(data.overall_emotional_quotient);
+                    }
+                    document.getElementById('query').value = ''; // Clear input field
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        });
+
+        // Initialize conversation history on page load
+        const initialGreetingQueries = ["Hi", "Hello", "Hey", "What's up"];
+        const randomInitialQuery = initialGreetingQueries[Math.floor(Math.random() * initialGreetingQueries.length)];
+        fetch('/chatbot', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query: randomInitialQuery }),
+        })
+            .then(response => response.json())
+            .then(data => {
+                updateConversation(data.conversation_history);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    </script>
+</body>
+
+</html>

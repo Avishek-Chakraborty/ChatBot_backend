@@ -1,0 +1,4 @@
+model.keras
+tokenizer.pkl
+.env
+.env.*
