@@ -1,12 +1,100 @@
 from flask import Flask, request, jsonify, render_template
+
+import os
 import pickle
 import random
+import h5py
+import json
+
 from transformers import pipeline
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from keras.preprocessing.sequence import pad_sequences
-from keras.models import load_model
+
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+from langchain.document_loaders import TextLoader
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.chains.question_answering import load_qa_chain
+from langchain import HuggingFaceHub
+
+from collections import defaultdict
 from intent import intents
+from dotenv import load_dotenv
+
+# The langchain part -->
+load_dotenv()
+x = os.getenv('HUGGINGFACE_API_TOKEN')
+encodings = ['utf-8', 'latin-1', 'utf-16']
+
+
+def remove_newlines(text):
+    """Remove newline characters from the text."""
+    return text.replace('\n', '')
+def replace_slash_with_or(text):
+    """Replace '/' with 'or' in the text."""
+    return text.replace('/', ' or ')
+def remove_brackets(text):
+    """Remove brackets from the text."""
+    return text.replace('(', '').replace(')', '')
+def replace_dashes_with_space(text):
+    """Replace '____' with a space in the text."""
+    return text.replace('____', '')
+def replace_multiple_dash_with_space_and_respective_text(text):
+    # Replace multiple underscores with an empty string
+    text = text.replace('____', '')
+
+    # Replace single underscore with "what is your choice.."
+    if '_' in text:
+        text = text.replace('_', 'what is your choice')
+
+    return text
+def preprocess_text(text):
+    """Preprocess the text using all defined functions."""
+    text = remove_newlines(text)
+    text = replace_slash_with_or(text)
+    text = remove_brackets(text)
+    text = replace_dashes_with_space(text)
+    text = replace_multiple_dash_with_space_and_respective_text(text)
+    return text
+
+for encoding in encodings:
+    try:
+        loader = TextLoader(r"VULNERABILITY_TO_DEPRESSION.txt", encoding=encoding)
+        depression_document = loader.load()
+        print("Document loaded successfully using encoding:", encoding)
+        break  # Break out of the loop if successful
+    except Exception as e:
+        print("Error loading document with encoding:", encoding)
+        print(e)
+
+# trying to preprocess text from a document about depression
+final_text=preprocess_text(str(depression_document[0]))
+text_splitter = CharacterTextSplitter(
+    separator='\n',
+    chunk_size=1000,
+    chunk_overlap=300,
+    length_function=len,
+    is_separator_regex=False,
+)
+
+depression_docs = text_splitter.split_documents(depression_document)
+
+embeddings=HuggingFaceEmbeddings()
+db = FAISS.from_documents(depression_docs,embeddings)
+
+# FLAN-T5 is a family of large language models trained at Google, 
+huggingface_hub = HuggingFaceHub(repo_id="google/flan-t5-large", model_kwargs={"temperature": 0.8, "max_length": 2048}, huggingfacehub_api_token=x)
+
+# Load the question-answering chain
+chain = load_qa_chain(huggingface_hub, chain_type="stuff")
+
+
+
+
 
 # Initialize and fit the TF-IDF vectorizer
 vectorizer = TfidfVectorizer()
@@ -108,10 +196,19 @@ def chatbot():
     global conversation_history
 
     data = request.get_json()
+    print("Data Here :: ",data)
     query = data["query"]
+    print("query Here :: ",query)
 
-    output = chatbot_response(query)
+    output = chatbot_response(query) # Here is the input coming from the intent_chatbot
+    print("output hare :: ", output)
     conversation_history.append({"user": query, "chatbot": output})
+
+
+    docsResult = db.similarity_search(query)
+    print(f"answring the questions through precise manner :{chain.run(input_documents=docsResult,question = query)}")
+    print("broad result:")
+    print(preprocess_text(str(docsResult[0].page_content)))
 
     sum, cnt, results = process_query(query, 0, 0, [])
     predicted_value, counter = depression_measure([query], 0, 0)

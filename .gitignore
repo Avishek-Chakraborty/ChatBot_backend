@@ -2,3 +2,6 @@ model.keras
 tokenizer.pkl
 .env
 .env.*
+__pycache__/
+mdl_chat.pkl
+myenv/
