@@ -1,10 +1,13 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 import os
 import pickle
 import random
-import h5py
-import json
+# import h5py
+# import json
+from collections import defaultdict
+
 
 from transformers import pipeline
 
@@ -14,16 +17,19 @@ from sklearn.linear_model import LogisticRegression
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-from langchain.document_loaders import TextLoader
+from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 from langchain import HuggingFaceHub
 
-from collections import defaultdict
+# from collections import defaultdict
 from intent import intents
 from dotenv import load_dotenv
+
+# To supress
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
 # The langchain part -->
 load_dotenv()
@@ -94,8 +100,6 @@ chain = load_qa_chain(huggingface_hub, chain_type="stuff")
 
 
 
-
-
 # Initialize and fit the TF-IDF vectorizer
 vectorizer = TfidfVectorizer()
 
@@ -138,6 +142,7 @@ def roberta_classifier(query):
     score_value = data["score"]
     return label_value, score_value
 
+# results_all = []
 
 # Process the query for emotion and depression analysis
 def process_query(query, sum, cnt, results):
@@ -147,6 +152,29 @@ def process_query(query, sum, cnt, results):
     results.append({"query": query, "emotion": label, "score": quotient})
     cnt += 1
     return sum, cnt, results
+
+
+def overall_emotional_quotient(results):
+    category_data = defaultdict(lambda: [0, 0])
+    for category, value in results:
+        category_data[category][0] += value
+        category_data[category][1] += 1
+    averages = {category: sum_value / count for category, (sum_value, count) in category_data.items()}
+    max_category = max(averages, key=averages.get)
+    max_average = averages[max_category]
+    print("Category with the highest average:", max_category)
+    print("Average value:", max_average)
+    return max_category, max_average
+
+def emotional_quotient_avg_each_cat(results):
+    emotion_data = defaultdict(lambda: [0, 0])
+    for emotion, value in results:
+        emotion_data[emotion][0] += value
+        emotion_data[emotion][1] += 1
+    averages = {emotion: sum_value / count for emotion, (sum_value, count) in emotion_data.items()}
+    # for emotion, average in averages.items():
+    #     print(f"Average for {emotion}: {average}")
+    return averages
 
 
 # Load the Keras model and tokenizer
@@ -184,43 +212,45 @@ def severity_levels(predicted_value, counter):
 
 # Create Flask application
 app = Flask(__name__)
-
-
-@app.route("/")
-def home():
-    return render_template("index.html")
+CORS(app)
 
 
 @app.route("/chatbot", methods=["POST"])
 def chatbot():
     global conversation_history
+    global results_all
 
     data = request.get_json()
-    print("Data Here :: ",data)
     query = data["query"]
-    print("query Here :: ",query)
 
     output = chatbot_response(query) # Here is the input coming from the intent_chatbot
-    print("output hare :: ", output)
-    conversation_history.append({"user": query, "chatbot": output})
-
 
     docsResult = db.similarity_search(query)
-    print(f"answring the questions through precise manner :{chain.run(input_documents=docsResult,question = query)}")
+    # print(f"answring the questions through precise manner :{chain.run(input_documents=docsResult,question = query)}")
     print("broad result:")
     print(preprocess_text(str(docsResult[0].page_content)))
 
+    output_l = preprocess_text(str(docsResult[0].page_content))
+
+    conversation_history.append({"user": query, "chatbot": output, "langchain" : output_l})
+
     sum, cnt, results = process_query(query, 0, 0, [])
+
+
+    print("results_all\n",results_all, "\n")
+
     predicted_value, counter = depression_measure([query], 0, 0)
 
     label, score = roberta_classifier(str(query))
 
+    results_all.append([label, score * 100]) 
+
     response = {
-        "response": output,
-        "emotion_analysis": results,
-        "depression_level": predicted_value / counter if counter > 0 else 0,
         "conversation_history": conversation_history,
-        "emotions": [[label, score]],
+        "depression_level": predicted_value / counter if counter > 0 else 0, #ok
+        "emotion_analysis": {"emotions" : label, "score": (score * 100)}, #ok
+        "response_lagchain": output_l, #ok
+        "response": output, #ok
     }
 
     if any(
@@ -235,19 +265,26 @@ def chatbot():
         ]
     ):
         avg_depression_level, severity = severity_levels(predicted_value, counter)
-        overall_emotional_quotient = sum / cnt if cnt > 0 else 0
+        overall_emotional_quotient_vlaue = overall_emotional_quotient(results_all)
+        emotional_quotient_avg_each_catagory_value = emotional_quotient_avg_each_cat(results_all)
         response["average_depression_level"] = avg_depression_level
         response["severity"] = severity
-        response["overall_emotional_quotient"] = overall_emotional_quotient
+        response["overall_emotional_quotient"] = overall_emotional_quotient_vlaue
+        response["emotional_quotient_avg_each_catagory_value"] = emotional_quotient_avg_each_catagory_value
+
+    print('\n')
+    print(response)
+    print('\n')
 
     return jsonify(response)
 
 
-@app.route("/favicon.ico")
-def favicon():
+# @app.route("/favicon.ico")
+# def favicon():
     return "", 204
 
 
 if __name__ == "__main__":
     conversation_history = []
+    results_all = []
     app.run(debug=True, port=8080, use_reloader=False)

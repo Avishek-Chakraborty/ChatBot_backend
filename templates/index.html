@@ -88,7 +88,7 @@
         });
 
         // Initialize conversation history on page load
-        const initialGreetingQueries = ["Hi", "Hello", "Hey", "What's up"];
+        const initialGreetingQueries = ["Hi", "Hello", "Hey", "Hi there"];
         const randomInitialQuery = initialGreetingQueries[Math.floor(Math.random() * initialGreetingQueries.length)];
         fetch('/chatbot', {
             method: 'POST',

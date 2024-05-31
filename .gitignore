@@ -5,3 +5,4 @@ tokenizer.pkl
 __pycache__/
 mdl_chat.pkl
 myenv/
+log.*
