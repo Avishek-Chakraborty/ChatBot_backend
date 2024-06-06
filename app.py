@@ -230,9 +230,9 @@ def chatbot():
     print("broad result:")
     print(preprocess_text(str(docsResult[0].page_content)))
 
-    output_l = preprocess_text(str(docsResult[0].page_content))
+    # output_l = preprocess_text(str(docsResult[0].page_content))
 
-    conversation_history.append({"user": query, "chatbot": output, "langchain" : output_l})
+    conversation_history.append({"user": query, "chatbot": output})
 
     sum, cnt, results = process_query(query, 0, 0, [])
 
@@ -249,7 +249,7 @@ def chatbot():
         "conversation_history": conversation_history,
         "depression_level": predicted_value / counter if counter > 0 else 0, #ok
         "emotion_analysis": {"emotions" : label, "score": (score * 100)}, #ok
-        "response_lagchain": output_l, #ok
+        # "response_lagchain": output_l, #ok
         "response": output, #ok
     }
 
